@@ -35,6 +35,17 @@ Rectangle {
     property bool selecting: false
     property var selectedIDs: []
     property string deletionSummary: ""
+    property var menuDeck: null
+    function openDeckMenu(deck) { if (!busy) menuDeck = deck; }
+    function deckAction(action) {
+        if (!menuDeck || busy) return;
+        var deck = menuDeck; menuDeck = null;
+        if (action === "Review") start(deck.id, deck.name);
+        else if (action === "Practice") { selectedDeck = deck.id; selectedName = deck.name; startPractice(); }
+        else if (action === "Move to folder") folderEditor(deck);
+        else if (action === "Select deck") { selecting = true; if (selectedIDs.indexOf(deck.id) < 0) toggleDeck(deck.id); }
+        else if (action === "Delete deck") { selecting = true; selectedIDs = [deck.id]; confirmDeletion(); }
+    }
     function toggleDeck(id) {
         var ids = selectedIDs.slice(), index = ids.indexOf(id);
         if (index < 0) ids.push(id); else ids.splice(index, 1);
@@ -87,7 +98,7 @@ Rectangle {
         folders.forEach(addFolder); decks.forEach(function(d) { addFolder(d.folder || ""); });
         decks.forEach(function(d) {
             var path = d.folder || "";
-            if (path === currentFolder) out.push({kind:"deck", name:d.name, id:d.id, total:d.total, due:d.due});
+            if (path === currentFolder) out.push({kind:"deck", name:d.name, id:d.id, folder:path, total:d.total, due:d.due});
             else if (path.indexOf(prefix) === 0) {
                 var segment = path.slice(prefix.length).split("/")[0];
                 if (folderMap[segment]) { folderMap[segment].total += d.total; folderMap[segment].due += d.due; }
@@ -115,7 +126,7 @@ Rectangle {
     }
     function folderEditor(deck) {
         folderDeck = deck ? deck.id : "";
-        folderInput.text = currentFolder;
+        folderInput.text = deck ? (deck.folder || "") : currentFolder;
         page = "folder";
     }
 
@@ -147,14 +158,33 @@ Rectangle {
             ListView {
                 id: deckList; x: 0; y: 446; width: parent.width; height: Math.max(80, parent.height - y - 226); clip: true; spacing: 12
                 model: app.entries
-                delegate: Rectangle {
+                delegate: Item {
+                    id: entry
                     required property var modelData
-                    width: deckList.width; height: 108; color: app.selectedIDs.indexOf(modelData.id) >= 0 ? "#e7eadf" : "white"; radius: 9; border.color: "#b2b6ad"
-                    Text { x: 20; y: 17; width: parent.width - 140; text: (modelData.kind === "folder" ? "▸  " : "") + modelData.name; elide: Text.ElideRight; font.pixelSize: 27; font.bold: true; color: "#202420" }
-                    Text { x: 20; y: 60; text: modelData.total + " cards"; font.pixelSize: 21; color: "#555b52" }
-                    Text { x: 180; y: 60; text: modelData.due + " due"; font.pixelSize: 21; color: "#394535" }
-                    MouseArea { anchors.fill: parent; enabled: !app.busy; onClicked: { if (modelData.kind === "folder") { app.currentFolder = modelData.path; app.buildEntries(); } else if (app.selecting) app.toggleDeck(modelData.id); else app.start(modelData.id, modelData.name); } }
-                    RecallButton { visible: modelData.kind === "deck"; anchors.right: parent.right; anchors.rightMargin: 12; y: 23; width: 105; height: 62; label: app.selecting ? (app.selectedIDs.indexOf(modelData.id) >= 0 ? "✓" : "Select") : "Move"; enabled: !app.busy; onClicked: { if (app.selecting) app.toggleDeck(modelData.id); else app.folderEditor(modelData); } }
+                    property bool isFolder: modelData.kind === "folder"
+                    width: deckList.width; height: 108
+                    Rectangle { visible: entry.isFolder; x: 0; y: 0; width: 134; height: 28; radius: 7; color: "#dce2d3"; border.color: "#89937e"; border.width: 2 }
+                    Rectangle { y: entry.isFolder ? 13 : 0; width: parent.width; height: parent.height - y; radius: 9; color: entry.isFolder ? "#e7eadf" : app.selectedIDs.indexOf(modelData.id) >= 0 ? "#e7eadf" : "white"; border.color: entry.isFolder ? "#89937e" : "#b2b6ad"; border.width: entry.isFolder ? 2 : 1 }
+                    Item { visible: entry.isFolder; x: 20; y: 36; width: 48; height: 38
+                        Rectangle { width: 22; height: 14; radius: 3; color: "#657359" }
+                        Rectangle { y: 8; width: 48; height: 30; radius: 4; color: "#657359" }
+                    }
+                    Text { x: entry.isFolder ? 86 : 20; y: entry.isFolder ? 26 : 17; width: parent.width - x - 130; text: modelData.name; textFormat: Text.PlainText; elide: Text.ElideRight; font.pixelSize: 27; font.bold: true; color: "#202420" }
+                    Text { x: entry.isFolder ? 86 : 20; y: 65; text: modelData.total + " cards · " + modelData.due + " due"; font.pixelSize: 21; color: "#555b52" }
+                    Text { visible: entry.isFolder; anchors.right: parent.right; anchors.rightMargin: 28; y: 32; text: "›"; font.pixelSize: 42; color: "#394535" }
+                    MouseArea {
+                        anchors.fill: parent; enabled: !app.busy; pressAndHoldInterval: 600
+                        property bool held: false
+                        onPressed: held = false
+                        onPressAndHold: { if (!entry.isFolder) { held = true; app.openDeckMenu(modelData); } }
+                        onClicked: {
+                            if (held) return;
+                            if (entry.isFolder) { app.currentFolder = modelData.path; app.buildEntries(); }
+                            else if (app.selecting) app.toggleDeck(modelData.id);
+                            else app.start(modelData.id, modelData.name);
+                        }
+                    }
+                    RecallButton { visible: !entry.isFolder; anchors.right: parent.right; anchors.rightMargin: 12; y: 23; width: 105; height: 62; label: app.selecting ? (app.selectedIDs.indexOf(modelData.id) >= 0 ? "✓" : "Select") : "•••"; enabled: !app.busy; onClicked: { if (app.selecting) app.toggleDeck(modelData.id); else app.openDeckMenu(modelData); } }
                 }
                 ScrollBar.vertical: ScrollBar {}
             }
@@ -252,6 +282,21 @@ Rectangle {
             Text { id: noticeText; x: 15; y: 12; width: parent.width - 60; text: app.clockWarning ? "Check the tablet date and time before reviewing." : app.notice; wrapMode: Text.Wrap; font.pixelSize: 21; color: "#202420" }
             Text { anchors.right: parent.right; anchors.rightMargin: 12; y: 8; text: "×"; font.pixelSize: 28 }
             MouseArea { anchors.fill: parent; onClicked: app.notice = "" }
+        }
+        Rectangle {
+            visible: app.menuDeck !== null; anchors.fill: parent; color: "#b3f7f7f2"; z: 8
+            MouseArea { anchors.fill: parent; onClicked: app.menuDeck = null }
+            Rectangle {
+                x: 32; anchors.verticalCenter: parent.verticalCenter; width: 576; height: 686; radius: 16; color: "#f7f7f2"; border.color: "#394535"; border.width: 2
+                MouseArea { anchors.fill: parent }
+                Column { x: 24; y: 24; width: parent.width - 48; spacing: 14
+                    Text { width: parent.width; text: app.menuDeck ? app.menuDeck.name : ""; textFormat: Text.PlainText; elide: Text.ElideRight; font.pixelSize: 32; font.bold: true; color: "#202420" }
+                    Text { width: parent.width; text: app.menuDeck ? (app.menuDeck.folder || "All folders") : ""; textFormat: Text.PlainText; elide: Text.ElideLeft; font.pixelSize: 21; color: "#555b52" }
+                    Repeater { model: ["Review", "Practice", "Move to folder", "Select deck", "Delete deck", "Cancel"]
+                        delegate: RecallButton { required property string modelData; width: 528; height: 76; label: modelData; enabled: !app.busy; onClicked: app.deckAction(modelData) }
+                    }
+                }
+            }
         }
         Text { visible: app.busy; x: 250; y: 108; text: "Saving / loading…"; font.pixelSize: 16; color: "#555b52"; z: 6 }
         Rectangle {

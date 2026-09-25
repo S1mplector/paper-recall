@@ -10,7 +10,7 @@ An offline flashcard app for reMarkable Paper Pro Move, launched from **sidebar 
 
 ## Using the app
 
-Open a deck or choose **Start reviewing** for all decks. Reveal the answer, then rate how well you remembered it. **Close** returns to the tablet interface. **+ Folder** accepts paths such as `Languages/French`; **Move** changes a deck's folder. Leave the destination empty to move a deck to the top level. **Create a card** creates a card in the current folder. The editor scrolls to accommodate long text and the keyboard.
+Open a deck or choose **Start reviewing** for all decks. Reveal the answer, then rate how well you remembered it. **Close** returns to the tablet interface. **+ Folder** accepts paths such as `Languages/French`; **Press and hold a deck**, or tap its **•••** button, to open Review, Practice, Move to folder, Select deck, and Delete deck options. Deleting still asks for confirmation. Folders have a tabbed shape and a folder icon; tap one to browse it. **Move to folder** changes a deck's folder. Leave the destination empty to move a deck to the top level. **Create a card** creates a card in the current folder. The editor scrolls to accommodate long text and the keyboard.
 
 ## Practice when nothing is due
 

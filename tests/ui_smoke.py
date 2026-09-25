@@ -39,7 +39,7 @@ QMetaObject.invokeMethod(r,'undoReview');QTest.qWait(100);assert r.property('rev
 d=json.loads(open(root+'/backend/welcome.recall').read());d['deck']={'id':'french','name':'French','folder':'Languages/French'};open(data+'/imports/french.recall','w').write(json.dumps(d))
 bridge.request(json.dumps({'action':'import'}));QTest.qWait(100)
 r.setProperty('page','home');r.setProperty('notice','');QTest.qWait(100)
-view.grabWindow().save(temp+'/recall-v2-folders.png')
+view.grabWindow().save('/tmp/recall-folder-style.png')
 QTest.mouseClick(view,Qt.LeftButton,Qt.NoModifier,QPoint(250,650));QTest.qWait(100)
 assert r.property('currentFolder')=='Languages',r.property('currentFolder')
 view.grabWindow().save(temp+'/recall-v2-folder.png')
@@ -86,6 +86,26 @@ assert r.property('page')=='review' and not r.property('practice')
 QTest.mouseClick(view,Qt.LeftButton,Qt.NoModifier,QPoint(300,980));QTest.qWait(100)
 assert r.property('practice') and r.property('practiceTotal')==6
 assert r.property('error')==''
-print('Native backend + QML: load, reveal, rate, persist, undo, import, folder navigation, deletion, practice cycling and unchanged schedules passed')
+# Holding a deck opens its menu without starting a review on release.
+QTest.mouseClick(view,Qt.LeftButton,Qt.NoModifier,QPoint(540,60));QTest.qWait(100)
+r.setProperty('notice','')
+QTest.mousePress(view,Qt.LeftButton,Qt.NoModifier,QPoint(250,650));QTest.qWait(750)
+QTest.mouseRelease(view,Qt.LeftButton,Qt.NoModifier,QPoint(250,650));QTest.qWait(100)
+assert r.property('page')=='home'
+view.grabWindow().save('/tmp/recall-deck-menu.png')
+def click_action(label):
+ row=['Review','Practice','Move to folder','Select deck','Delete deck','Cancel'].index(label)
+ QTest.mouseClick(view,Qt.LeftButton,Qt.NoModifier,QPoint(320,390+90*row));QTest.qWait(100)
+click_action('Cancel')
+assert r.property('page')=='home'
+QTest.mouseClick(view,Qt.LeftButton,Qt.NoModifier,QPoint(540,650));QTest.qWait(100)
+click_action('Move to folder');assert r.property('page')=='folder'
+QTest.mouseClick(view,Qt.LeftButton,Qt.NoModifier,QPoint(540,60));QTest.qWait(100)
+QTest.mousePress(view,Qt.LeftButton,Qt.NoModifier,QPoint(250,650));QTest.qWait(750)
+QTest.mouseRelease(view,Qt.LeftButton,Qt.NoModifier,QPoint(250,650));QTest.qWait(100)
+click_action('Delete deck');assert r.property('page')=='delete'
+QTest.mouseClick(view,Qt.LeftButton,Qt.NoModifier,QPoint(170,1070));QTest.qWait(100)
+assert Path(data+'/state.json').read_bytes()==before_practice
+print('Native backend + QML: load, reveal, rate, persist, undo, import, folder navigation, deletion, practice cycling and unchanged schedules, long-press menu and menu actions passed')
 conn.send(struct.pack('<II',0xffffffff,0)); conn.close(); proc.wait(timeout=5)
 server.close(); view.close(); shutil.rmtree(temp)
