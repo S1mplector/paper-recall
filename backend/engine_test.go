@@ -227,3 +227,34 @@ func TestFailedDeletionPreservesLibrary(t *testing.T) {
 		t.Fatal("failed save deleted cards")
 	}
 }
+
+func TestPracticeCyclesWithoutChangingProgress(t *testing.T) {
+	s := testStore(t)
+	now := int64(1800000000000)
+	s.importBytes([]byte(testDeck), now)
+	s.importBytes([]byte(strings.ReplaceAll(testDeck, "french", "spanish")), now)
+	for _, id := range []string{"french/hello", "spanish/hello"} {
+		s.handle(Request{Action: "review", ID: id, Rating: "easy"}, now)
+	}
+	before, _ := json.Marshal(s.State)
+	for i := 0; i < 5; i++ {
+		v := s.handle(Request{Action: "practiceNext", Practice: true, PracticeIndex: i}, now)
+		if v.Error != "" || v.Current == nil || v.DueCount != 0 || v.PracticeTotal != 2 || v.Current.ID != s.State.Cards[i%2].ID {
+			t.Fatalf("practice failed: %+v", v)
+		}
+	}
+	v := s.handle(Request{Action: "status", Practice: true, Deck: "spanish", PracticeIndex: 7}, now)
+	if v.Current == nil || v.Current.DeckID != "spanish" || v.PracticeTotal != 1 {
+		t.Fatal("practice ignored deck")
+	}
+	if v = s.handle(Request{Action: "status", Practice: true, Deck: "missing"}, now); v.Current != nil {
+		t.Fatal("practice returned unrelated card")
+	}
+	if v = s.handle(Request{Action: "review", Practice: true, ID: "french/hello", Rating: "again", Expected: 1}, now); v.Error == "" {
+		t.Fatal("allowed practice rating")
+	}
+	after, _ := json.Marshal(s.State)
+	if string(before) != string(after) {
+		t.Fatal("practice modified saved progress")
+	}
+}

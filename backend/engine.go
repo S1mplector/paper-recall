@@ -13,17 +13,19 @@ import (
 )
 
 type Request struct {
-	DeckIDs  []string `json:"deckIds"`
-	Action   string   `json:"action"`
-	Token    string   `json:"token"`
-	Deck     string   `json:"deck"`
-	ID       string   `json:"id"`
-	Rating   string   `json:"rating"`
-	Expected int      `json:"expected"`
-	Front    string   `json:"front"`
-	Back     string   `json:"back"`
-	DeckName string   `json:"deckName"`
-	Folder   string   `json:"folder"`
+	Practice      bool     `json:"practice"`
+	PracticeIndex int      `json:"practiceIndex"`
+	DeckIDs       []string `json:"deckIds"`
+	Action        string   `json:"action"`
+	Token         string   `json:"token"`
+	Deck          string   `json:"deck"`
+	ID            string   `json:"id"`
+	Rating        string   `json:"rating"`
+	Expected      int      `json:"expected"`
+	Front         string   `json:"front"`
+	Back          string   `json:"back"`
+	DeckName      string   `json:"deckName"`
+	Folder        string   `json:"folder"`
 }
 type DeckView struct {
 	Folder string `json:"folder"`
@@ -37,6 +39,8 @@ type CardView struct {
 	Labels map[string]string `json:"labels"`
 }
 type View struct {
+	Practice      bool       `json:"practice"`
+	PracticeTotal int        `json:"practiceTotal"`
 	Token         string     `json:"token"`
 	Action        string     `json:"action"`
 	Error         string     `json:"error"`
@@ -52,7 +56,7 @@ type View struct {
 }
 
 func (s *Store) view(req Request, now int64) View {
-	v := View{Token: req.Token, Action: req.Action, Notice: s.Notice, Decks: []DeckView{}, Folders: s.State.Folders, CanUndo: s.State.Undo != nil}
+	v := View{Practice: req.Practice, Token: req.Token, Action: req.Action, Notice: s.Notice, Decks: []DeckView{}, Folders: s.State.Folders, CanUndo: s.State.Undo != nil}
 	v.ReviewedToday = s.State.Daily[time.UnixMilli(now).Format("2006-01-02")]
 	v.ClockWarning = now < s.State.LastMutation-5*minute
 	groups := map[string]*DeckView{}
@@ -100,6 +104,19 @@ func (s *Store) view(req Request, now int64) View {
 			v.Current.Labels[r] = intervalLabel(p.Due - now)
 		}
 	}
+	if req.Practice {
+		cards := []Card{}
+		for _, c := range s.State.Cards {
+			if req.Deck == "" || c.DeckID == req.Deck {
+				cards = append(cards, c)
+			}
+		}
+		v.PracticeTotal = len(cards)
+		v.Current = nil
+		if len(cards) > 0 {
+			v.Current = &CardView{Card: cards[max(0, req.PracticeIndex)%len(cards)], Labels: map[string]string{}}
+		}
+	}
 	for _, d := range groups {
 		v.Decks = append(v.Decks, *d)
 	}
@@ -111,8 +128,12 @@ func (s *Store) handle(req Request, now int64) View {
 	next := cloneState(s.State)
 	mutate := false
 	switch req.Action {
-	case "status":
+	case "status", "practiceNext":
 	case "review":
+		if req.Practice {
+			err = fmt.Errorf("practice does not change review schedules")
+			break
+		}
 		if now < s.State.LastMutation-5*minute {
 			err = fmt.Errorf("tablet clock moved backwards; correct its date and time before reviewing")
 			break

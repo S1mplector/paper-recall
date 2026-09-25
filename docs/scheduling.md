@@ -25,7 +25,7 @@ Again schedules one minute. Hard schedules fifteen minutes. Good returns to revi
 
 ## Queue and correctness
 
-Due learning/relearning cards come first, then due reviews, then new cards; each group sorts by due time. No early review or daily new-card cap is implemented. The due queue refreshes while on the home screen and while waiting for the next due card.
+Due learning/relearning cards come first, then due reviews, then new cards; each group sorts by due time. Scheduled reviews do not allow early ratings, and no daily new-card cap is implemented. Optional practice cycles through cards regardless of due date without changing schedules, daily review counts, or undo history. The due queue refreshes while on the home screen and while waiting for the next due card.
 
 A rating is acknowledged only after saving. Each request includes the expected review count, so duplicate or stale ratings cannot advance an already changed card. Undo restores the previous schedule and daily count for the last rating while retaining text edits. It survives reopening. Daily counts count ratings, including repeated learning steps, using the device's local date.
 

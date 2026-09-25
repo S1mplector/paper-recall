@@ -61,6 +61,31 @@ assert r.property('page')=='home' and not r.property('selecting')
 assert r.property('dueCount')==6 and r.property('error')==''
 state=json.loads(Path(data+'/state.json').read_text())['state']
 assert all(c['deckId']!='french' for c in state['cards'])
-print('Native backend + QML: load, reveal, rate, persist, undo, import, folder navigation, deletion cancel/confirm and persistence passed')
+# Finish all due cards, then practice through the home and completion buttons.
+for c in state['cards']:
+ bridge.request(json.dumps({'action':'review','id':c['id'],'expected':c['schedule']['reviews'],'rating':'easy'}))
+QTest.qWait(100)
+assert r.property('dueCount')==0
+r.setProperty('currentFolder','');r.setProperty('notice','')
+QMetaObject.invokeMethod(r,'buildEntries');QTest.qWait(100)
+before_practice=Path(data+'/state.json').read_bytes()
+QTest.mouseClick(view,Qt.LeftButton,Qt.NoModifier,QPoint(300,465));QTest.qWait(100)
+assert r.property('practice') and r.property('page')=='review'
+for i in range(7):
+ QTest.mouseClick(view,Qt.LeftButton,Qt.NoModifier,QPoint(300,980));QTest.qWait(50)
+ assert r.property('revealed')
+ if i==0: view.grabWindow().save('/tmp/recall-practice.png')
+ QTest.mouseClick(view,Qt.LeftButton,Qt.NoModifier,QPoint(300,980));QTest.qWait(50)
+ assert not r.property('revealed')
+assert r.property('sessionCount')==7
+assert Path(data+'/state.json').read_bytes()==before_practice
+QTest.mouseClick(view,Qt.LeftButton,Qt.NoModifier,QPoint(170,1070));QTest.qWait(100)
+assert not r.property('practice') and r.property('page')=='home'
+QTest.mouseClick(view,Qt.LeftButton,Qt.NoModifier,QPoint(250,650));QTest.qWait(100)
+assert r.property('page')=='review' and not r.property('practice')
+QTest.mouseClick(view,Qt.LeftButton,Qt.NoModifier,QPoint(300,980));QTest.qWait(100)
+assert r.property('practice') and r.property('practiceTotal')==6
+assert r.property('error')==''
+print('Native backend + QML: load, reveal, rate, persist, undo, import, folder navigation, deletion, practice cycling and unchanged schedules passed')
 conn.send(struct.pack('<II',0xffffffff,0)); conn.close(); proc.wait(timeout=5)
 server.close(); view.close(); shutil.rmtree(temp)

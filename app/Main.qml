@@ -16,6 +16,8 @@ Rectangle {
     property string currentFolder: ""
     property var current: null
     property bool revealed: false
+    property bool practice: false
+    property int practiceTotal: 0
     property string selectedDeck: ""
     property string selectedName: ""
     property string error: ""
@@ -54,6 +56,7 @@ Rectangle {
     function request(action, fields) {
         if (busy || !bridge.item) return;
         var message = fields || {};
+        message.practice = practice; message.practiceIndex = message.practiceIndex === undefined ? sessionCount : message.practiceIndex;
         message.action = action; message.deck = message.deck === undefined ? selectedDeck : message.deck;
         message.token = Date.now() + "-" + Math.random().toString(36).slice(2);
         pending = message.token; busy = true; timeout.restart(); bridge.item.send(message);
@@ -66,6 +69,8 @@ Rectangle {
         reviewedToday = message.reviewedToday || 0; canUndo = !!message.canUndo;
         notice = message.notice || ""; clockWarning = !!message.clockWarning; nextDue = message.nextDue || 0;
         current = message.current || null;
+        practiceTotal = message.practiceTotal || 0;
+        if (message.action === "practiceNext") { sessionCount++; revealed = false; }
         if (message.action === "review") { sessionCount++; revealed = false; }
         if (message.action === "undo") { sessionCount = Math.max(0, sessionCount - 1); revealed = true; }
         if (message.action === "save" || message.action === "folder" || message.action === "moveDeck") { Qt.inputMethod.hide(); page = "home"; }
@@ -92,9 +97,11 @@ Rectangle {
         entries = dirs.concat(out);
     }
     function refresh() { request("status"); }
-    function start(deck, name) { selectedDeck = deck; selectedName = name || "All decks"; sessionCount = 0; revealed = false; page = "review"; request("status"); }
+    function start(deck, name) { practice = false; selectedDeck = deck; selectedName = name || "All decks"; sessionCount = 0; revealed = false; page = "review"; request("status"); }
+    function startPractice() { practice = true; sessionCount = 0; revealed = false; page = "review"; request("status"); }
+    function nextPractice() { if (!busy && practice && current && revealed) request("practiceNext", {practiceIndex: sessionCount + 1}); }
     function rate(rating) {
-        if (!current || !revealed || busy) return;
+        if (!current || !revealed || busy || practice) return;
         request("review", {id:current.id, expected:current.schedule.reviews, rating:rating});
     }
     function undoReview() { request("undo"); }
@@ -119,7 +126,7 @@ Rectangle {
         Item {
             id: header; x: 32; y: 32; width: 576; height: 76
             Text { text: "PAPER / RECALL"; font.pixelSize: 20; font.letterSpacing: 3; font.bold: true; color: "#394535"; anchors.verticalCenter: parent.verticalCenter }
-            RecallButton { x: 454; width: 122; height: 62; label: app.page === "home" ? "Close" : "Home"; onClicked: { Qt.inputMethod.hide(); if (app.page === "home") app.close(); else { app.page = "home"; app.refresh(); } } }
+            RecallButton { x: 454; width: 122; height: 62; label: app.page === "home" ? "Close" : "Home"; onClicked: { Qt.inputMethod.hide(); if (app.page === "home") app.close(); else { app.page = "home"; app.practice = false; app.refresh(); } } }
         }
         Rectangle { x: 32; y: 122; width: 576; height: 2; color: "#202420" }
 
@@ -134,7 +141,7 @@ Rectangle {
                 Text { x: 340; y: 33; text: app.reviewedToday; font.pixelSize: 45; color: "#202420" }
                 Text { x: 340; y: 102; text: "reviews today"; font.pixelSize: 23; color: "#394535" }
             }
-            RecallButton { y: 270; width: parent.width; height: 82; primary: true; label: app.dueCount ? "Start reviewing" : "All caught up"; enabled: app.dueCount > 0 && !app.busy && !app.selecting; onClicked: app.start("", "All decks") }
+            RecallButton { y: 270; width: parent.width; height: 82; primary: true; label: app.dueCount ? "Start reviewing" : "Practice cards"; enabled: app.decks.length > 0 && !app.busy && !app.selecting; onClicked: { if (app.dueCount) app.start("", "All decks"); else { app.selectedDeck = ""; app.selectedName = "All decks"; app.startPractice(); } } }
             Text { y: 382; width: 370; text: app.currentFolder || "ALL FOLDERS"; elide: Text.ElideLeft; font.pixelSize: 20; font.bold: true; color: "#555b52" }
             RecallButton { y: 365; anchors.right: parent.right; width: 152; height: 62; visible: app.currentFolder !== ""; label: "Up"; enabled: !app.busy; onClicked: { if (app.currentFolder) { app.currentFolder = app.currentFolder.split("/").slice(0,-1).join("/"); app.buildEntries(); } else app.folderEditor(null); } }
             ListView {
@@ -163,10 +170,10 @@ Rectangle {
         Item {
             visible: app.page === "review"; x: 32; y: 151; width: 576; height: canvas.height - y - 28
             Text { width: 410; text: app.selectedName || "All decks"; elide: Text.ElideRight; font.pixelSize: 27; font.bold: true; color: "#202420" }
-            Text { anchors.right: parent.right; y: 5; text: app.sessionCount + " reviewed"; font.pixelSize: 20; color: "#555b52" }
+            Text { anchors.right: parent.right; y: 5; text: app.sessionCount + (app.practice ? " practiced" : " reviewed"); font.pixelSize: 20; color: "#555b52" }
             Rectangle {
                 x: 0; y: 67; width: parent.width; height: parent.height - 274; radius: 14; color: "white"; border.color: "#b2b6ad"
-                Text { x: 28; y: 24; text: !app.current ? "SESSION COMPLETE" : app.revealed ? "ANSWER" : "QUESTION"; font.pixelSize: 18; font.letterSpacing: 2; color: "#555b52" }
+                Text { x: 28; y: 24; text: !app.current ? "SESSION COMPLETE" : (app.practice ? "PRACTICE · " : "") + (app.revealed ? "ANSWER" : "QUESTION"); font.pixelSize: 18; font.letterSpacing: 2; color: "#555b52" }
                 Flickable {
                     x: 28; y: 78; width: parent.width - 56; height: parent.height - 113; clip: true; contentHeight: cardText.height
                     Text {
@@ -181,23 +188,24 @@ Rectangle {
             }
             RecallButton { visible: !!app.current && !app.revealed; anchors.bottom: footer.top; anchors.bottomMargin: 18; width: parent.width; height: 98; primary: true; label: "Show answer"; detail: ""; enabled: !app.busy; onClicked: app.revealed = true }
             Row {
-                visible: !!app.current && app.revealed; anchors.bottom: footer.top; anchors.bottomMargin: 18; spacing: 10
+                visible: !!app.current && app.revealed && !app.practice; anchors.bottom: footer.top; anchors.bottomMargin: 18; spacing: 10
                 Repeater {
                     model: ["again", "hard", "good", "easy"]
                     delegate: RecallButton {
                         required property string modelData
                         width: 136.5; height: 98; primary: modelData === "good"
                         label: modelData.charAt(0).toUpperCase() + modelData.slice(1)
-                        detail: app.current ? app.current.labels[modelData] : ""
+                        detail: app.current ? (app.current.labels[modelData] || "") : ""
                         enabled: !app.busy && !app.clockWarning
                         onClicked: app.rate(modelData)
                     }
                 }
             }
-            RecallButton { visible: !app.current; anchors.bottom: footer.top; anchors.bottomMargin: 18; width: parent.width; height: 98; primary: true; label: "Back to decks"; onClicked: app.page = "home" }
+            RecallButton { visible: !!app.current && app.revealed && app.practice; anchors.bottom: footer.top; anchors.bottomMargin: 18; width: parent.width; height: 98; primary: true; label: "Next card"; detail: "Practice · schedule unchanged"; enabled: !app.busy; onClicked: app.nextPractice() }
+            RecallButton { visible: !app.current; anchors.bottom: footer.top; anchors.bottomMargin: 18; width: parent.width; height: 98; primary: true; label: "Practice again"; detail: "Review freely · schedule unchanged"; enabled: !app.busy && app.decks.some(function(d) { return !app.selectedDeck || d.id === app.selectedDeck; }); onClicked: app.startPractice() }
             Row {
                 id: footer; anchors.bottom: parent.bottom; spacing: 16
-                RecallButton { width: 280; height: 66; label: "Undo rating"; enabled: app.canUndo && !app.busy; onClicked: app.undoReview() }
+                RecallButton { width: 280; height: 66; label: app.practice ? "Finish practice" : "Undo rating"; enabled: !app.busy && (app.practice || app.canUndo); onClicked: { if (app.practice) { app.practice = false; app.page = "home"; app.refresh(); } else app.undoReview(); } }
                 RecallButton { width: 280; height: 66; label: "Edit card"; enabled: !!app.current && !app.busy; onClicked: app.edit(app.current) }
             }
         }
