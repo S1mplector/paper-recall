@@ -44,6 +44,23 @@ QTest.mouseClick(view,Qt.LeftButton,Qt.NoModifier,QPoint(250,650));QTest.qWait(1
 assert r.property('currentFolder')=='Languages',r.property('currentFolder')
 view.grabWindow().save(temp+'/recall-v2-folder.png')
 assert r.property('error')=='',r.property('error')
-print('Native backend + QML: load, reveal, rate, persist, undo, import, folder navigation passed')
+# Select a deck, cancel confirmation, then confirm deletion using real clicks.
+QTest.mouseClick(view,Qt.LeftButton,Qt.NoModifier,QPoint(250,650));QTest.qWait(100)
+assert r.property('currentFolder')=='Languages/French'
+QTest.mouseClick(view,Qt.LeftButton,Qt.NoModifier,QPoint(520,190));QTest.qWait(100)
+assert r.property('selecting')
+QTest.mouseClick(view,Qt.LeftButton,Qt.NoModifier,QPoint(250,650));QTest.qWait(100)
+QTest.mouseClick(view,Qt.LeftButton,Qt.NoModifier,QPoint(300,1070));QTest.qWait(100)
+assert r.property('page')=='delete'
+QTest.mouseClick(view,Qt.LeftButton,Qt.NoModifier,QPoint(170,1070));QTest.qWait(100)
+assert r.property('page')=='home' and r.property('dueCount')==12
+QTest.mouseClick(view,Qt.LeftButton,Qt.NoModifier,QPoint(300,1070));QTest.qWait(100)
+view.grabWindow().save('/tmp/recall-delete-confirm.png')
+QTest.mouseClick(view,Qt.LeftButton,Qt.NoModifier,QPoint(460,1070));QTest.qWait(100)
+assert r.property('page')=='home' and not r.property('selecting')
+assert r.property('dueCount')==6 and r.property('error')==''
+state=json.loads(Path(data+'/state.json').read_text())['state']
+assert all(c['deckId']!='french' for c in state['cards'])
+print('Native backend + QML: load, reveal, rate, persist, undo, import, folder navigation, deletion cancel/confirm and persistence passed')
 conn.send(struct.pack('<II',0xffffffff,0)); conn.close(); proc.wait(timeout=5)
 server.close(); view.close(); shutil.rmtree(temp)

@@ -12,6 +12,10 @@ An offline flashcard app for reMarkable Paper Pro Move, launched from **sidebar 
 
 Open a deck or choose **Start reviewing** for all decks. Reveal the answer, then rate how well you remembered it. **Close** returns to the tablet interface. **+ Folder** accepts paths such as `Languages/French`; **Move** changes a deck's folder. Leave the destination empty to move a deck to the top level. **Create a card** creates a card in the current folder. The editor scrolls to accommodate long text and the keyboard.
 
+## Delete decks
+
+Tap **Select**, then tap the decks you want to remove. Browse folders to select decks in different folders. Tap **Delete selected**, review the deck names and card count, and confirm **Delete decks**. Cancel leaves the library unchanged. Deletion removes those cards and their schedules; folders and historical daily review totals remain. It cannot be undone with Undo rating. Export first if you want to keep card content. Re-uploading a deleted deck imports it again with fresh progress.
+
 ## Make and import decks
 
 See the [format specification](docs/recall-format.md), [ready-to-copy GPT prompt](docs/gpt-deck-prompt.md), and [example deck](examples/french.recall).

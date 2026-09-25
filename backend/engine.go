@@ -13,16 +13,17 @@ import (
 )
 
 type Request struct {
-	Action   string `json:"action"`
-	Token    string `json:"token"`
-	Deck     string `json:"deck"`
-	ID       string `json:"id"`
-	Rating   string `json:"rating"`
-	Expected int    `json:"expected"`
-	Front    string `json:"front"`
-	Back     string `json:"back"`
-	DeckName string `json:"deckName"`
-	Folder   string `json:"folder"`
+	DeckIDs  []string `json:"deckIds"`
+	Action   string   `json:"action"`
+	Token    string   `json:"token"`
+	Deck     string   `json:"deck"`
+	ID       string   `json:"id"`
+	Rating   string   `json:"rating"`
+	Expected int      `json:"expected"`
+	Front    string   `json:"front"`
+	Back     string   `json:"back"`
+	DeckName string   `json:"deckName"`
+	Folder   string   `json:"folder"`
 }
 type DeckView struct {
 	Folder string `json:"folder"`
@@ -173,6 +174,38 @@ func (s *Store) handle(req Request, now int64) View {
 		next.Daily[next.Undo.Day] = max(0, next.Daily[next.Undo.Day]-1)
 		next.Undo = nil
 		mutate = true
+	case "deleteDecks":
+		if len(req.DeckIDs) == 0 {
+			err = fmt.Errorf("select at least one deck")
+			break
+		}
+		selected := map[string]bool{}
+		existing := map[string]bool{}
+		for _, c := range next.Cards {
+			existing[c.DeckID] = true
+		}
+		for _, id := range req.DeckIDs {
+			if !existing[id] {
+				err = fmt.Errorf("a selected deck no longer exists; refresh and select again")
+				break
+			}
+			selected[id] = true
+		}
+		if err != nil {
+			break
+		}
+		kept := make([]Card, 0, len(next.Cards))
+		for _, c := range next.Cards {
+			if selected[c.DeckID] {
+				if next.Undo != nil && next.Undo.CardID == c.ID {
+					next.Undo = nil
+				}
+			} else {
+				kept = append(kept, c)
+			}
+		}
+		next.Cards = kept
+		mutate = true
 	case "folder", "moveDeck":
 		var folder string
 		folder, err = normalizeFolder(req.Folder)
@@ -287,7 +320,12 @@ func (s *Store) importBytes(raw []byte, now int64) (int, int, error) {
 	h := sha256.Sum256(raw)
 	hash := hex.EncodeToString(h[:])
 	if s.State.Imported[hash] {
-		return 0, 0, nil
+		// A deliberately re-uploaded deck can be restored after deletion.
+		for _, c := range s.State.Cards {
+			if c.DeckID == d.Deck.ID {
+				return 0, 0, nil
+			}
+		}
 	}
 	next := cloneState(s.State)
 	a, u := mergeDeck(&next, d)

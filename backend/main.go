@@ -90,7 +90,7 @@ func run() error {
 	if store != nil {
 		defer store.Close()
 	}
-	if startErr == nil && len(store.State.Cards) == 0 {
+	if startErr == nil && store.State.Revision == 0 && len(store.State.Cards) == 0 {
 		exe, _ := os.Executable()
 		raw, err := os.ReadFile(filepath.Join(filepath.Dir(exe), "welcome.recall"))
 		if err == nil {

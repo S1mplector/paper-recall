@@ -168,3 +168,62 @@ func TestSameDeckNameInDifferentFolders(t *testing.T) {
 		t.Fatalf("incorrect deck grouping: %+v", cards)
 	}
 }
+
+func TestDeleteDecksPersistenceAndReimport(t *testing.T) {
+	s := testStore(t)
+	now := int64(1800000000000)
+	s.importBytes([]byte(testDeck), now)
+	other := strings.ReplaceAll(testDeck, "french", "spanish")
+	s.importBytes([]byte(other), now)
+	s.handle(Request{Action: "review", ID: "french/hello", Rating: "good", Token: "review"}, now)
+	before := s.State.Revision
+	if v := s.handle(Request{Action: "deleteDecks", DeckIDs: []string{"french", "missing"}}, now); v.Error == "" || s.State.Revision != before {
+		t.Fatal("partial deletion of invalid selection")
+	}
+	if v := s.handle(Request{Action: "deleteDecks"}, now); v.Error == "" {
+		t.Fatal("accepted empty selection")
+	}
+	v := s.handle(Request{Action: "deleteDecks", DeckIDs: []string{"french"}}, now)
+	if v.Error != "" || len(s.State.Cards) != 1 || s.State.Cards[0].DeckID != "spanish" || v.CanUndo || v.ReviewedToday != 1 {
+		t.Fatalf("bad deletion: %+v", v)
+	}
+	dir := s.Dir
+	s.Close()
+	reopened, e := openStore(dir)
+	if e != nil {
+		t.Fatal(e)
+	}
+	defer reopened.Close()
+	if len(reopened.State.Cards) != 1 {
+		t.Fatal("deletion did not persist")
+	}
+	if _, _, e = reopened.importBytes([]byte(testDeck), now); e != nil {
+		t.Fatal(e)
+	}
+	if len(reopened.State.Cards) != 2 {
+		t.Fatal("could not reimport deleted deck")
+	}
+	v = reopened.handle(Request{Action: "deleteDecks", DeckIDs: []string{"french", "spanish"}}, now)
+	if v.Error != "" || len(reopened.State.Cards) != 0 {
+		t.Fatal("bulk deletion failed")
+	}
+	reopened.Close()
+	empty, e := openStore(dir)
+	if e != nil {
+		t.Fatal(e)
+	}
+	defer empty.Close()
+	if empty.State.Revision == 0 || len(empty.State.Cards) != 0 {
+		t.Fatal("empty library not preserved")
+	}
+}
+
+func TestFailedDeletionPreservesLibrary(t *testing.T) {
+	s := testStore(t)
+	s.importBytes([]byte(testDeck), 1800000000000)
+	s.Dir = filepath.Join(s.Dir, "missing")
+	v := s.handle(Request{Action: "deleteDecks", DeckIDs: []string{"french"}}, 1800000000000)
+	if v.Error == "" || len(s.State.Cards) != 1 {
+		t.Fatal("failed save deleted cards")
+	}
+}

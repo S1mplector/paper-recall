@@ -30,6 +30,22 @@ Rectangle {
     property string pending: ""
     property string folderDeck: ""
     property real nextDue: 0
+    property bool selecting: false
+    property var selectedIDs: []
+    property string deletionSummary: ""
+    function toggleDeck(id) {
+        var ids = selectedIDs.slice(), index = ids.indexOf(id);
+        if (index < 0) ids.push(id); else ids.splice(index, 1);
+        selectedIDs = ids;
+    }
+    function cancelSelection() { selecting = false; selectedIDs = []; page = "home"; }
+    function confirmDeletion() {
+        var chosen = decks.filter(function(d) { return selectedIDs.indexOf(d.id) >= 0; });
+        if (!chosen.length) return;
+        var count = chosen.reduce(function(n, d) { return n + d.total; }, 0);
+        deletionSummary = chosen.length + " deck(s), " + count + " cards\n\n" + chosen.map(function(d) { return (d.folder ? d.folder + "/" : "") + d.name; }).join("\n") + "\n\nTheir cards and review progress will be removed. This cannot be undone in the app. Export first if you want to keep the cards.";
+        page = "delete";
+    }
 
     Loader { id: bridge; source: app.transportSource; onLoaded: { app.busy = false; app.request("status"); } }
     Connections { target: bridge.item; function onResponse(message) { app.accept(message); } }
@@ -53,6 +69,7 @@ Rectangle {
         if (message.action === "review") { sessionCount++; revealed = false; }
         if (message.action === "undo") { sessionCount = Math.max(0, sessionCount - 1); revealed = true; }
         if (message.action === "save" || message.action === "folder" || message.action === "moveDeck") { Qt.inputMethod.hide(); page = "home"; }
+        if (message.action === "deleteDecks") { cancelSelection(); selectedDeck = ""; selectedName = ""; notice = "Selected decks deleted."; }
         buildEntries();
     }
     function buildEntries() {
@@ -109,6 +126,7 @@ Rectangle {
         Item {
             visible: app.page === "home"; x: 32; y: 158; width: 576; height: canvas.height - y - 26
             Text { id: title; text: "Decks"; font.pixelSize: 46; font.family: "Noto Serif"; color: "#202420" }
+            RecallButton { x: 400; y: 0; width: 176; height: 62; label: app.selecting ? "Cancel" : "Select"; enabled: !app.busy && app.decks.length > 0; onClicked: { if (app.selecting) app.cancelSelection(); else { app.selecting = true; app.selectedIDs = []; } } }
             Rectangle {
                 y: 85; width: parent.width; height: 166; radius: 14; color: "#e7eadf"
                 Text { x: 24; y: 21; text: app.dueCount; font.pixelSize: 64; font.bold: true; color: "#202420" }
@@ -116,7 +134,7 @@ Rectangle {
                 Text { x: 340; y: 33; text: app.reviewedToday; font.pixelSize: 45; color: "#202420" }
                 Text { x: 340; y: 102; text: "reviews today"; font.pixelSize: 23; color: "#394535" }
             }
-            RecallButton { y: 270; width: parent.width; height: 82; primary: true; label: app.dueCount ? "Start reviewing" : "All caught up"; enabled: app.dueCount > 0 && !app.busy; onClicked: app.start("", "All decks") }
+            RecallButton { y: 270; width: parent.width; height: 82; primary: true; label: app.dueCount ? "Start reviewing" : "All caught up"; enabled: app.dueCount > 0 && !app.busy && !app.selecting; onClicked: app.start("", "All decks") }
             Text { y: 382; width: 370; text: app.currentFolder || "ALL FOLDERS"; elide: Text.ElideLeft; font.pixelSize: 20; font.bold: true; color: "#555b52" }
             RecallButton { y: 365; anchors.right: parent.right; width: 152; height: 62; visible: app.currentFolder !== ""; label: "Up"; enabled: !app.busy; onClicked: { if (app.currentFolder) { app.currentFolder = app.currentFolder.split("/").slice(0,-1).join("/"); app.buildEntries(); } else app.folderEditor(null); } }
             ListView {
@@ -124,21 +142,22 @@ Rectangle {
                 model: app.entries
                 delegate: Rectangle {
                     required property var modelData
-                    width: deckList.width; height: 108; color: "white"; radius: 9; border.color: "#b2b6ad"
+                    width: deckList.width; height: 108; color: app.selectedIDs.indexOf(modelData.id) >= 0 ? "#e7eadf" : "white"; radius: 9; border.color: "#b2b6ad"
                     Text { x: 20; y: 17; width: parent.width - 140; text: (modelData.kind === "folder" ? "▸  " : "") + modelData.name; elide: Text.ElideRight; font.pixelSize: 27; font.bold: true; color: "#202420" }
                     Text { x: 20; y: 60; text: modelData.total + " cards"; font.pixelSize: 21; color: "#555b52" }
                     Text { x: 180; y: 60; text: modelData.due + " due"; font.pixelSize: 21; color: "#394535" }
-                    MouseArea { anchors.fill: parent; enabled: !app.busy; onClicked: { if (modelData.kind === "folder") { app.currentFolder = modelData.path; app.buildEntries(); } else app.start(modelData.id, modelData.name); } }
-                    RecallButton { visible: modelData.kind === "deck"; anchors.right: parent.right; anchors.rightMargin: 12; y: 23; width: 105; height: 62; label: "Move"; enabled: !app.busy; onClicked: app.folderEditor(modelData) }
+                    MouseArea { anchors.fill: parent; enabled: !app.busy; onClicked: { if (modelData.kind === "folder") { app.currentFolder = modelData.path; app.buildEntries(); } else if (app.selecting) app.toggleDeck(modelData.id); else app.start(modelData.id, modelData.name); } }
+                    RecallButton { visible: modelData.kind === "deck"; anchors.right: parent.right; anchors.rightMargin: 12; y: 23; width: 105; height: 62; label: app.selecting ? (app.selectedIDs.indexOf(modelData.id) >= 0 ? "✓" : "Select") : "Move"; enabled: !app.busy; onClicked: { if (app.selecting) app.toggleDeck(modelData.id); else app.folderEditor(modelData); } }
                 }
                 ScrollBar.vertical: ScrollBar {}
             }
-            Row { anchors.bottom: createCard.top; anchors.bottomMargin: 14; spacing: 12
+            Row { visible: !app.selecting; anchors.bottom: createCard.top; anchors.bottomMargin: 14; spacing: 12
                 RecallButton { width: 184; height: 68; label: "Import"; enabled: !app.busy; onClicked: app.request("import") }
                 RecallButton { width: 184; height: 68; label: "Export"; enabled: !app.busy; onClicked: app.request("export") }
                 RecallButton { width: 184; height: 68; label: "+ Folder"; enabled: !app.busy; onClicked: app.folderEditor(null) }
             }
-            RecallButton { id: createCard; anchors.bottom: parent.bottom; width: parent.width; height: 76; label: "+  Create a card"; enabled: !app.busy; onClicked: app.edit(null) }
+            Text { visible: app.selecting; anchors.bottom: createCard.top; anchors.bottomMargin: 24; width: parent.width; text: app.selectedIDs.length + " selected. Tap decks to select.\nYou can browse folders to select more."; wrapMode: Text.Wrap; font.pixelSize: 22; color: "#394535" }
+            RecallButton { id: createCard; anchors.bottom: parent.bottom; width: parent.width; height: 76; label: app.selecting ? "Delete selected (" + app.selectedIDs.length + ")" : "+  Create a card"; enabled: !app.busy && (!app.selecting || app.selectedIDs.length > 0); onClicked: { if (app.selecting) app.confirmDeletion(); else app.edit(null); } }
         }
 
         Item {
@@ -180,6 +199,19 @@ Rectangle {
                 id: footer; anchors.bottom: parent.bottom; spacing: 16
                 RecallButton { width: 280; height: 66; label: "Undo rating"; enabled: app.canUndo && !app.busy; onClicked: app.undoReview() }
                 RecallButton { width: 280; height: 66; label: "Edit card"; enabled: !!app.current && !app.busy; onClicked: app.edit(app.current) }
+            }
+        }
+
+        Item {
+            visible: app.page === "delete"; x: 32; y: 158; width: 576; height: canvas.height - y - 28
+            Text { text: "Delete decks?"; font.pixelSize: 42; color: "#202420" }
+            Flickable { y: 90; width: parent.width; height: parent.height - 200; contentHeight: deletionText.height; clip: true
+                Text { id: deletionText; width: parent.width; text: app.deletionSummary; textFormat: Text.PlainText; wrapMode: Text.Wrap; font.pixelSize: 26; color: "#202420" }
+                ScrollBar.vertical: ScrollBar {}
+            }
+            Row { anchors.bottom: parent.bottom; spacing: 16
+                RecallButton { width: 280; label: "Cancel"; enabled: !app.busy; onClicked: app.page = "home" }
+                RecallButton { width: 280; label: "Delete decks"; primary: true; enabled: !app.busy; onClicked: app.request("deleteDecks", {deckIds: app.selectedIDs, deck: ""}) }
             }
         }
 

@@ -22,7 +22,7 @@ Files must be at most 8 MiB. The total library is limited to 20,000 imported car
 
 ## Updating a deck
 
-The identity of a stored card is the pair `(deck.id, card.id)`. Retain both when correcting a question or answer: reimport updates text while preserving the schedule. Changing an ID creates a new card or deck. Import also updates the name and folder of the deck. Omitted cards are retained; imports never delete cards. A byte-for-byte previously imported file is skipped, even if you have since edited the deck locally. Change the file to import a revised version.
+The identity of a stored card is the pair `(deck.id, card.id)`. Retain both when correcting a question or answer: reimport updates text while preserving the schedule. Changing an ID creates a new card or deck. Import also updates the name and folder of the deck. Omitted cards are retained; imports never delete cards. A byte-for-byte previously imported file is skipped while its deck still exists, even if you have since edited the deck locally. Change the file to import a revised version.
 
 Files awaiting import live in `/home/root/.local/share/paper-recall/imports/`. Successfully imported files are archived under `imported/`; failed files remain available for correction. Only regular `.recall` files in the inbox are read. The upload helper stages files with another extension to avoid partial imports.
 
