@@ -1,0 +1,40 @@
+{
+  "format": "paper-recall",
+  "version": 1,
+  "deck": {
+    "id": "welcome",
+    "name": "Getting started"
+  },
+  "cards": [
+    {
+      "id": "welcome-1",
+      "front": "How does Paper Recall help you remember?",
+      "back": "Try to recall the answer before revealing it. Then rate how well you remembered. Your next review is scheduled automatically."
+    },
+    {
+      "id": "welcome-2",
+      "front": "What do the four rating buttons mean?",
+      "back": "Again — I forgot.\nHard — I struggled.\nGood — I remembered.\nEasy — I knew it instantly.\n\nEach button shows when you will see this card again."
+    },
+    {
+      "id": "welcome-3",
+      "front": "How do I add my own study material?",
+      "back": "Tap Home, then Create a card.\n\nOr ask GPT for a .recall deck, copy it to the tablet’s imports folder, and tap Import decks. The public repository documents the format."
+    },
+    {
+      "id": "learning-1",
+      "front": "What is active recall?",
+      "back": "Retrieving an answer from memory before looking it up. The effort of retrieval helps strengthen memory."
+    },
+    {
+      "id": "learning-2",
+      "front": "What makes a useful flashcard?",
+      "back": "One clear question with one focused answer. Split long lists and broad topics into smaller cards."
+    },
+    {
+      "id": "learning-3",
+      "front": "What is spaced repetition?",
+      "back": "Revisiting material across increasing time intervals, with difficult cards returning sooner than familiar ones."
+    }
+  ]
+}

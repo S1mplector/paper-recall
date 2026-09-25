@@ -1,0 +1,9 @@
+{
+  "name": "Paper Recall",
+  "id": "paper-recall",
+  "entry": "/paper-recall/Main.qml",
+  "loadsBackend": true,
+  "supportsScaling": true,
+  "canHaveMultipleFrontends": false,
+  "aspectRatio": "move"
+}

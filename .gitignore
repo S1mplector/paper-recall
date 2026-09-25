@@ -1,0 +1,8 @@
+build/
+__pycache__/
+.venv/
+*.sqlite
+*.sqlite-*
+*.db
+*.db-*
+private/

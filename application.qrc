@@ -1,0 +1,7 @@
+<RCC>
+  <qresource prefix="/paper-recall">
+    <file alias="Main.qml">app/Main.qml</file>
+    <file alias="RecallButton.qml">app/RecallButton.qml</file>
+    <file alias="DeviceTransport.qml">app/DeviceTransport.qml</file>
+  </qresource>
+</RCC>

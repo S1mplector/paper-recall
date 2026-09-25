@@ -1,0 +1,9 @@
+{
+  "format": "paper-recall",
+  "version": 1,
+  "deck": {"id": "french-basics", "name": "French basics", "folder": "Languages/French"},
+  "cards": [
+    {"id": "bonjour", "front": "How do you say hello in French?", "back": "Bonjour"},
+    {"id": "merci", "front": "What does merci mean?", "back": "Thank you"}
+  ]
+}
