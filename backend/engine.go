@@ -195,6 +195,40 @@ func (s *Store) handle(req Request, now int64) View {
 		next.Daily[next.Undo.Day] = max(0, next.Daily[next.Undo.Day]-1)
 		next.Undo = nil
 		mutate = true
+	case "deleteFolder":
+		folder, e := normalizeFolder(req.Folder)
+		if e != nil || folder == "" {
+			err = fmt.Errorf("select a valid folder to delete")
+			break
+		}
+		inside := func(path string) bool { return path == folder || strings.HasPrefix(path, folder+"/") }
+		found := false
+		folders := []string{}
+		for _, f := range next.Folders {
+			if inside(f) {
+				found = true
+			} else {
+				folders = append(folders, f)
+			}
+		}
+		cards := []Card{}
+		for _, c := range next.Cards {
+			if inside(c.Folder) {
+				found = true
+				if next.Undo != nil && next.Undo.CardID == c.ID {
+					next.Undo = nil
+				}
+			} else {
+				cards = append(cards, c)
+			}
+		}
+		if !found {
+			err = fmt.Errorf("folder no longer exists; refresh and try again")
+			break
+		}
+		next.Folders = folders
+		next.Cards = cards
+		mutate = true
 	case "deleteDecks":
 		if len(req.DeckIDs) == 0 {
 			err = fmt.Errorf("select at least one deck")

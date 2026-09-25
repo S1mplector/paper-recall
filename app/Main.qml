@@ -35,12 +35,21 @@ Rectangle {
     property bool selecting: false
     property var selectedIDs: []
     property string deletionSummary: ""
+    property string deletionFolder: ""
     property var menuDeck: null
     function openDeckMenu(deck) { if (!busy) menuDeck = deck; }
     function deckAction(action) {
         if (!menuDeck || busy) return;
         var deck = menuDeck; menuDeck = null;
-        if (action === "Review") start(deck.id, deck.name);
+        if (action === "Open folder") { currentFolder = deck.path; buildEntries(); }
+        else if (action === "Delete folder") {
+            deletionFolder = deck.path;
+            var chosen = decks.filter(function(d) { return d.folder === deck.path || d.folder.indexOf(deck.path + "/") === 0; });
+            var count = chosen.reduce(function(n, d) { return n + d.total; }, 0);
+            deletionSummary = deck.path + "\n\n" + chosen.length + " deck(s), " + count + " cards\n\n" + chosen.map(function(d) { return d.folder + "/" + d.name; }).join("\n") + "\n\nThis folder, its subfolders, and all cards and review progress inside will be removed. This cannot be undone in the app.";
+            page = "delete";
+        }
+        else if (action === "Review") start(deck.id, deck.name);
         else if (action === "Practice") { selectedDeck = deck.id; selectedName = deck.name; startPractice(); }
         else if (action === "Move to folder") folderEditor(deck);
         else if (action === "Select deck") { selecting = true; if (selectedIDs.indexOf(deck.id) < 0) toggleDeck(deck.id); }
@@ -53,6 +62,7 @@ Rectangle {
     }
     function cancelSelection() { selecting = false; selectedIDs = []; page = "home"; }
     function confirmDeletion() {
+        deletionFolder = "";
         var chosen = decks.filter(function(d) { return selectedIDs.indexOf(d.id) >= 0; });
         if (!chosen.length) return;
         var count = chosen.reduce(function(n, d) { return n + d.total; }, 0);
@@ -86,6 +96,10 @@ Rectangle {
         if (message.action === "undo") { sessionCount = Math.max(0, sessionCount - 1); revealed = true; }
         if (message.action === "save" || message.action === "folder" || message.action === "moveDeck") { Qt.inputMethod.hide(); page = "home"; }
         if (message.action === "deleteDecks") { cancelSelection(); selectedDeck = ""; selectedName = ""; notice = "Selected decks deleted."; }
+        if (message.action === "deleteFolder") {
+            if (currentFolder === deletionFolder || currentFolder.indexOf(deletionFolder + "/") === 0) currentFolder = deletionFolder.split("/").slice(0,-1).join("/");
+            cancelSelection(); selectedDeck = ""; selectedName = ""; deletionFolder = ""; notice = "Folder deleted.";
+        }
         buildEntries();
     }
     function buildEntries() {
@@ -171,12 +185,12 @@ Rectangle {
                     }
                     Text { x: entry.isFolder ? 86 : 20; y: entry.isFolder ? 26 : 17; width: parent.width - x - 130; text: modelData.name; textFormat: Text.PlainText; elide: Text.ElideRight; font.pixelSize: 27; font.bold: true; color: "#202420" }
                     Text { x: entry.isFolder ? 86 : 20; y: 65; text: modelData.total + " cards · " + modelData.due + " due"; font.pixelSize: 21; color: "#555b52" }
-                    Text { visible: entry.isFolder; anchors.right: parent.right; anchors.rightMargin: 28; y: 32; text: "›"; font.pixelSize: 42; color: "#394535" }
+                    Text { visible: false; anchors.right: parent.right; anchors.rightMargin: 28; y: 32; text: "›"; font.pixelSize: 42; color: "#394535" }
                     MouseArea {
                         anchors.fill: parent; enabled: !app.busy; pressAndHoldInterval: 600
                         property bool held: false
                         onPressed: held = false
-                        onPressAndHold: { if (!entry.isFolder) { held = true; app.openDeckMenu(modelData); } }
+                        onPressAndHold: { held = true; app.openDeckMenu(modelData); }
                         onClicked: {
                             if (held) return;
                             if (entry.isFolder) { app.currentFolder = modelData.path; app.buildEntries(); }
@@ -184,7 +198,7 @@ Rectangle {
                             else app.start(modelData.id, modelData.name);
                         }
                     }
-                    RecallButton { visible: !entry.isFolder; anchors.right: parent.right; anchors.rightMargin: 12; y: 23; width: 105; height: 62; label: app.selecting ? (app.selectedIDs.indexOf(modelData.id) >= 0 ? "✓" : "Select") : "•••"; enabled: !app.busy; onClicked: { if (app.selecting) app.toggleDeck(modelData.id); else app.openDeckMenu(modelData); } }
+                    RecallButton { anchors.right: parent.right; anchors.rightMargin: 12; y: 23; width: 105; height: 62; label: app.selecting && !entry.isFolder ? (app.selectedIDs.indexOf(modelData.id) >= 0 ? "✓" : "Select") : "•••"; enabled: !app.busy; onClicked: { if (app.selecting && !entry.isFolder) app.toggleDeck(modelData.id); else app.openDeckMenu(modelData); } }
                 }
                 ScrollBar.vertical: ScrollBar {}
             }
@@ -242,14 +256,14 @@ Rectangle {
 
         Item {
             visible: app.page === "delete"; x: 32; y: 158; width: 576; height: canvas.height - y - 28
-            Text { text: "Delete decks?"; font.pixelSize: 42; color: "#202420" }
+            Text { text: app.deletionFolder ? "Delete folder?" : "Delete decks?"; font.pixelSize: 42; color: "#202420" }
             Flickable { y: 90; width: parent.width; height: parent.height - 200; contentHeight: deletionText.height; clip: true
                 Text { id: deletionText; width: parent.width; text: app.deletionSummary; textFormat: Text.PlainText; wrapMode: Text.Wrap; font.pixelSize: 26; color: "#202420" }
                 ScrollBar.vertical: ScrollBar {}
             }
             Row { anchors.bottom: parent.bottom; spacing: 16
                 RecallButton { width: 280; label: "Cancel"; enabled: !app.busy; onClicked: app.page = "home" }
-                RecallButton { width: 280; label: "Delete decks"; primary: true; enabled: !app.busy; onClicked: app.request("deleteDecks", {deckIds: app.selectedIDs, deck: ""}) }
+                RecallButton { width: 280; label: app.deletionFolder ? "Delete folder" : "Delete decks"; primary: true; enabled: !app.busy; onClicked: { if (app.deletionFolder) app.request("deleteFolder", {folder: app.deletionFolder, deck: ""}); else app.request("deleteDecks", {deckIds: app.selectedIDs, deck: ""}); } }
             }
         }
 
@@ -287,12 +301,12 @@ Rectangle {
             visible: app.menuDeck !== null; anchors.fill: parent; color: "#b3f7f7f2"; z: 8
             MouseArea { anchors.fill: parent; onClicked: app.menuDeck = null }
             Rectangle {
-                x: 32; anchors.verticalCenter: parent.verticalCenter; width: 576; height: 686; radius: 16; color: "#f7f7f2"; border.color: "#394535"; border.width: 2
+                x: 32; anchors.verticalCenter: parent.verticalCenter; width: 576; height: app.menuDeck && app.menuDeck.kind === "folder" ? 416 : 686; radius: 16; color: "#f7f7f2"; border.color: "#394535"; border.width: 2
                 MouseArea { anchors.fill: parent }
                 Column { x: 24; y: 24; width: parent.width - 48; spacing: 14
                     Text { width: parent.width; text: app.menuDeck ? app.menuDeck.name : ""; textFormat: Text.PlainText; elide: Text.ElideRight; font.pixelSize: 32; font.bold: true; color: "#202420" }
-                    Text { width: parent.width; text: app.menuDeck ? (app.menuDeck.folder || "All folders") : ""; textFormat: Text.PlainText; elide: Text.ElideLeft; font.pixelSize: 21; color: "#555b52" }
-                    Repeater { model: ["Review", "Practice", "Move to folder", "Select deck", "Delete deck", "Cancel"]
+                    Text { width: parent.width; text: app.menuDeck ? (app.menuDeck.path || app.menuDeck.folder || "All folders") : ""; textFormat: Text.PlainText; elide: Text.ElideLeft; font.pixelSize: 21; color: "#555b52" }
+                    Repeater { model: app.menuDeck && app.menuDeck.kind === "folder" ? ["Open folder", "Delete folder", "Cancel"] : ["Review", "Practice", "Move to folder", "Select deck", "Delete deck", "Cancel"]
                         delegate: RecallButton { required property string modelData; width: 528; height: 76; label: modelData; enabled: !app.busy; onClicked: app.deckAction(modelData) }
                     }
                 }

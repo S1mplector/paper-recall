@@ -106,6 +106,29 @@ QTest.mouseRelease(view,Qt.LeftButton,Qt.NoModifier,QPoint(250,650));QTest.qWait
 click_action('Delete deck');assert r.property('page')=='delete'
 QTest.mouseClick(view,Qt.LeftButton,Qt.NoModifier,QPoint(170,1070));QTest.qWait(100)
 assert Path(data+'/state.json').read_bytes()==before_practice
+# Folder menu deletes a parent and its nested deck only after confirmation.
+QMetaObject.invokeMethod(r,'cancelSelection')
+bridge.request(json.dumps({'action':'import'}))
+# Re-upload the deleted French deck and create an empty descendant.
+open(data+'/imports/french.recall','w').write(json.dumps(d))
+bridge.request(json.dumps({'action':'import'}))
+bridge.request(json.dumps({'action':'folder','folder':'Languages/Empty/Nested'}))
+r.setProperty('notice','');QTest.qWait(100)
+folder_before=Path(data+'/state.json').read_bytes()
+QTest.mousePress(view,Qt.LeftButton,Qt.NoModifier,QPoint(250,650));QTest.qWait(750)
+QTest.mouseRelease(view,Qt.LeftButton,Qt.NoModifier,QPoint(250,650));QTest.qWait(100)
+QTest.mouseClick(view,Qt.LeftButton,Qt.NoModifier,QPoint(320,615));QTest.qWait(100)
+assert r.property('page')=='delete' and r.property('deletionFolder')=='Languages'
+view.grabWindow().save('/tmp/recall-delete-folder.png')
+QTest.mouseClick(view,Qt.LeftButton,Qt.NoModifier,QPoint(170,1070));QTest.qWait(100)
+assert Path(data+'/state.json').read_bytes()==folder_before
+QTest.mouseClick(view,Qt.LeftButton,Qt.NoModifier,QPoint(540,650));QTest.qWait(100)
+QTest.mouseClick(view,Qt.LeftButton,Qt.NoModifier,QPoint(320,615));QTest.qWait(100)
+QTest.mouseClick(view,Qt.LeftButton,Qt.NoModifier,QPoint(460,1070));QTest.qWait(100)
+assert r.property('page')=='home' and r.property('error')==''
+folder_state=json.loads(Path(data+'/state.json').read_text())['state']
+assert len(folder_state['cards'])==6 and folder_state['folders']==[]
+assert all(c['deckId']=='welcome' for c in folder_state['cards'])
 print('Native backend + QML: load, reveal, rate, persist, undo, import, folder navigation, deletion, practice cycling and unchanged schedules, long-press menu and menu actions passed')
 conn.send(struct.pack('<II',0xffffffff,0)); conn.close(); proc.wait(timeout=5)
 server.close(); view.close(); shutil.rmtree(temp)

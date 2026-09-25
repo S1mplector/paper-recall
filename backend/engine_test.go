@@ -258,3 +258,40 @@ func TestPracticeCyclesWithoutChangingProgress(t *testing.T) {
 		t.Fatal("practice modified saved progress")
 	}
 }
+
+func TestDeleteFolderIncludesDescendantsOnly(t *testing.T) {
+	s := testStore(t)
+	now := int64(1800000000000)
+	s.importBytes([]byte(testDeck), now)
+	s.importBytes([]byte(strings.ReplaceAll(strings.ReplaceAll(testDeck, "french", "other"), "Languages/French", "LanguagesOther")), now)
+	s.handle(Request{Action: "folder", Folder: "Languages/Empty/Nested"}, now)
+	s.handle(Request{Action: "review", ID: "french/hello", Rating: "good"}, now)
+	before := s.State.Revision
+	for _, path := range []string{"", "/", "Missing"} {
+		if v := s.handle(Request{Action: "deleteFolder", Folder: path}, now); v.Error == "" || s.State.Revision != before {
+			t.Fatal("invalid delete modified state")
+		}
+	}
+	v := s.handle(Request{Action: "deleteFolder", Folder: "Languages"}, now)
+	if v.Error != "" || len(s.State.Cards) != 1 || s.State.Cards[0].Folder != "LanguagesOther" || len(s.State.Folders) != 0 || v.CanUndo || v.ReviewedToday != 1 {
+		t.Fatalf("bad folder deletion: %+v", v)
+	}
+	dir := s.Dir
+	s.Close()
+	reopened, e := openStore(dir)
+	if e != nil {
+		t.Fatal(e)
+	}
+	defer reopened.Close()
+	if len(reopened.State.Cards) != 1 || len(reopened.State.Folders) != 0 {
+		t.Fatal("folder deletion did not persist")
+	}
+	reopened.handle(Request{Action: "folder", Folder: "Empty"}, now)
+	if v = reopened.handle(Request{Action: "deleteFolder", Folder: "Empty"}, now); v.Error != "" || len(reopened.State.Folders) != 0 {
+		t.Fatal("empty folder deletion failed")
+	}
+	reopened.Dir = filepath.Join(dir, "missing")
+	if v = reopened.handle(Request{Action: "deleteFolder", Folder: "LanguagesOther"}, now); v.Error == "" || len(reopened.State.Cards) != 1 {
+		t.Fatal("failed deletion lost cards")
+	}
+}

@@ -20,6 +20,10 @@ Tap **Practice cards** on the home screen when you are caught up, or **Practice 
 
 Tap **Select**, then tap the decks you want to remove. Browse folders to select decks in different folders. Tap **Delete selected**, review the deck names and card count, and confirm **Delete decks**. Cancel leaves the library unchanged. Deletion removes those cards and their schedules; folders and historical daily review totals remain. It cannot be undone with Undo rating. Export first if you want to keep card content. Re-uploading a deleted deck imports it again with fresh progress.
 
+## Delete folders
+
+Press and hold a folder, or tap its **•••** button, then choose **Delete folder**. Review the listed decks and card count before confirming. This removes the folder, all nested folders, and their decks and schedules. Empty folders can also be deleted. Other folders and decks are preserved. Cancel makes no changes; deletion cannot be undone in the app.
+
 ## Make and import decks
 
 See the [format specification](docs/recall-format.md), [ready-to-copy GPT prompt](docs/gpt-deck-prompt.md), and [example deck](examples/french.recall).
