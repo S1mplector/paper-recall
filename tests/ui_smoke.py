@@ -23,7 +23,8 @@ class Bridge(QObject):
    kind,length=struct.unpack('<II',conn.recv(8));payload=conn.recv(length) if length else b''
    if kind==101:parts.append(payload)
    if kind==102:break
-  self.delivered.emit(b''.join(parts).decode())
+  self.last_response=b''.join(parts).decode()
+  self.delivered.emit(self.last_response)
 app=QGuiApplication([]);bridge=Bridge();QResource.registerResource(root+'/build/paper-recall/resources.rcc')
 view=QQuickView();view.rootContext().setContextProperty('testBackend',bridge);view.setInitialProperties({'transportSource':QUrl.fromLocalFile(str(transport)).toString()})
 view.setResizeMode(QQuickView.SizeRootObjectToView);view.resize(640,1138);view.setSource(QUrl('qrc:/paper-recall/Main.qml'));view.show();QTest.qWait(500)
@@ -129,6 +130,17 @@ assert r.property('page')=='home' and r.property('error')==''
 folder_state=json.loads(Path(data+'/state.json').read_text())['state']
 assert len(folder_state['cards'])==6 and folder_state['folders']==[]
 assert all(c['deckId']=='welcome' for c in folder_state['cards'])
+# A duplicated response must not overwrite the current screen state.
+response=json.loads(bridge.last_response);assert response['token']
+old_due=r.property('dueCount');response['dueCount']=999999
+bridge.delivered.emit(json.dumps(response));QTest.qWait(100)
+assert r.property('dueCount')==old_due
+# Folder labels that are JS prototype property names are ordinary folders.
+bridge.request(json.dumps({'action':'folder','folder':'__proto__/constructor'}));QTest.qWait(100)
+r.setProperty('notice','');r.setProperty('currentFolder','');QMetaObject.invokeMethod(r,'buildEntries')
+entries=r.property('entries').toVariant()
+assert any(x['name']=='__proto__' for x in entries)
+assert r.property('error')==''
 print('Native backend + QML: load, reveal, rate, persist, undo, import, folder navigation, deletion, practice cycling and unchanged schedules, long-press menu and menu actions passed')
 conn.send(struct.pack('<II',0xffffffff,0)); conn.close(); proc.wait(timeout=5)
 server.close(); view.close(); shutil.rmtree(temp)

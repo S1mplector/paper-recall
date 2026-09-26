@@ -8,6 +8,18 @@ import (
 const minute int64 = 60_000
 const day int64 = 24 * 60 * minute
 const maxInterval = 3650.0
+const maxTimestamp int64 = 253402300799999 // End of year 9999; well within JS exact integers.
+func validateSchedule(p Schedule) error {
+	if math.IsNaN(p.Interval) || math.IsInf(p.Interval, 0) || math.IsNaN(p.Ease) || math.IsInf(p.Ease, 0) || p.Interval < 0 || p.Interval > maxInterval || (p.Ease != 0 && p.Ease < 1.3) || p.Ease > 3 || p.Due < 0 || p.Due > maxTimestamp || p.LastReview < 0 || p.LastReview > maxTimestamp || p.Reviews < 0 || p.Reviews > 1000000000 || p.Lapses < 0 || p.Lapses > p.Reviews || p.Step < 0 || p.Step > 1 {
+		return fmt.Errorf("invalid stored schedule")
+	}
+	switch p.Phase {
+	case "", "new", "learning", "review", "relearning":
+	default:
+		return fmt.Errorf("unknown learning phase %q", p.Phase)
+	}
+	return nil
+}
 
 type Schedule struct {
 	Phase      string  `json:"phase"`
@@ -21,6 +33,12 @@ type Schedule struct {
 }
 
 func schedule(p Schedule, rating string, now int64) (Schedule, error) {
+	if e := validateSchedule(p); e != nil {
+		return p, e
+	}
+	if now < 0 || now > maxTimestamp-int64(maxInterval)*day || p.Reviews >= 1000000000 {
+		return p, fmt.Errorf("review time or counter out of range")
+	}
 	if rating != "again" && rating != "hard" && rating != "good" && rating != "easy" {
 		return p, fmt.Errorf("unknown rating")
 	}

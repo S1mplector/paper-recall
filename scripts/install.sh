@@ -12,9 +12,17 @@ base=/home/root/xovi/exthome/appload
 chmod 700 "$base/.paper-recall-stage/backend/entry"
 "$base/.paper-recall-stage/backend/entry" --validate "$base/.paper-recall-stage/backend/welcome.recall"
 systemctl stop xochitl
-trap "systemctl start xochitl" EXIT
+old="/home/root/.local/share/paper-recall/app-backup-$(date +%s)-$$"
+recover() {
+    result=$?
+    if [ ! -d "$base/paper-recall" ] && [ -d "$old" ]; then mv "$old" "$base/paper-recall"; fi
+    systemctl start xochitl
+    exit "$result"
+}
+trap recover EXIT
+"$base/.paper-recall-stage/backend/entry" --check-state /home/root/.local/share/paper-recall
 # Previous application builds are archived outside the launcher directory.
-if [ -d "$base/paper-recall" ]; then mv "$base/paper-recall" "/home/root/.local/share/paper-recall/app-backup-$(date +%s)"; fi
+if [ -d "$base/paper-recall" ]; then mv "$base/paper-recall" "$old"; fi
 mv "$base/.paper-recall-stage" "$base/paper-recall"
 systemctl start xochitl
 trap - EXIT'

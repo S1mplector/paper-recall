@@ -56,12 +56,15 @@ type View struct {
 }
 
 func (s *Store) view(req Request, now int64) View {
-	v := View{Practice: req.Practice, Token: req.Token, Action: req.Action, Notice: s.Notice, Decks: []DeckView{}, Folders: s.State.Folders, CanUndo: s.State.Undo != nil}
+	v := View{Practice: req.Practice, Token: req.Token, Action: req.Action, Notice: s.Notice, Decks: []DeckView{}, Folders: s.State.Folders, CanUndo: false}
 	v.ReviewedToday = s.State.Daily[time.UnixMilli(now).Format("2006-01-02")]
 	v.ClockWarning = now < s.State.LastMutation-5*minute
 	groups := map[string]*DeckView{}
 	due := []Card{}
 	for _, c := range s.State.Cards {
+		if s.State.Undo != nil && s.State.Undo.CardID == c.ID && (req.Deck == "" || req.Deck == c.DeckID) {
+			v.CanUndo = true
+		}
 		d := groups[c.DeckID]
 		if d == nil {
 			d = &DeckView{ID: c.DeckID, Name: c.Deck, Folder: c.Folder}
@@ -124,9 +127,22 @@ func (s *Store) view(req Request, now int64) View {
 	return v
 }
 func (s *Store) handle(req Request, now int64) View {
+	if req.Token != "" {
+		for _, token := range s.State.RecentActions {
+			if token == req.Token {
+				v := s.view(req, now)
+				v.Error = "This action was already saved. Refresh before trying again."
+				return v
+			}
+		}
+	}
 	var err error
-	next := cloneState(s.State)
+	next := s.State
+	if req.Action != "status" && req.Action != "practiceNext" && req.Action != "export" && req.Action != "import" {
+		next = cloneState(s.State)
+	}
 	mutate := false
+	restoredID := ""
 	switch req.Action {
 	case "status", "practiceNext":
 	case "review":
@@ -183,6 +199,10 @@ func (s *Store) handle(req Request, now int64) View {
 		found := false
 		for i := range next.Cards {
 			if next.Cards[i].ID == next.Undo.CardID {
+				if req.Deck != "" && next.Cards[i].DeckID != req.Deck {
+					break
+				}
+				restoredID = next.Cards[i].ID
 				next.Cards[i].Schedule = next.Undo.Before
 				found = true
 				break
@@ -303,6 +323,10 @@ func (s *Store) handle(req Request, now int64) View {
 			err = folderErr
 			break
 		}
+		if req.ID == "" && req.Token == "" {
+			err = fmt.Errorf("new cards require a request token")
+			break
+		}
 		req.Front = strings.TrimSpace(req.Front)
 		req.Back = strings.TrimSpace(req.Back)
 		req.DeckName = strings.TrimSpace(req.DeckName)
@@ -334,7 +358,7 @@ func (s *Store) handle(req Request, now int64) View {
 				}
 			}
 			if deckID == "" {
-				h := sha256.Sum256([]byte(req.Folder + "\x00" + req.DeckName))
+				h := sha256.Sum256([]byte(req.Folder + "\x00" + req.DeckName + "\x00" + req.Token))
 				deckID = "local-" + hex.EncodeToString(h[:8])
 			}
 			h := sha256.Sum256([]byte(req.Token))
@@ -358,10 +382,29 @@ func (s *Store) handle(req Request, now int64) View {
 		err = fmt.Errorf("unknown action")
 	}
 	if mutate && err == nil {
+		if req.Token != "" {
+			next.RecentActions = append(next.RecentActions, req.Token)
+			if len(next.RecentActions) > 256 {
+				next.RecentActions = next.RecentActions[len(next.RecentActions)-256:]
+			}
+		}
 		next.LastMutation = max(now, next.LastMutation)
 		err = s.Save(next)
 	}
 	v := s.view(req, now)
+	if err == nil && restoredID != "" {
+		for _, c := range s.State.Cards {
+			if c.ID == restoredID {
+				v.Current = &CardView{Card: c, Labels: map[string]string{}}
+				for _, rating := range []string{"again", "hard", "good", "easy"} {
+					p, _ := schedule(c.Schedule, rating, now)
+					v.Current.Labels[rating] = intervalLabel(p.Due - now)
+				}
+				break
+			}
+		}
+	}
+	s.Notice = ""
 	if err != nil {
 		v.Error = err.Error()
 	}
@@ -462,8 +505,18 @@ func (s *Store) exportDecks() error {
 			Back  string `json:"back"`
 		}{id, c.Front, c.Back})
 	}
+	// Validate every output before replacing any exported file.
+	for _, d := range decks {
+		raw, e := json.Marshal(d)
+		if e != nil {
+			return e
+		}
+		if _, e = parseDeck(raw); e != nil {
+			return fmt.Errorf("cannot export %s: %w", d.Deck.Name, e)
+		}
+	}
 	for id, d := range decks {
-		raw, e := json.MarshalIndent(d, "", "  ")
+		raw, e := json.Marshal(d)
 		if e != nil {
 			return e
 		}

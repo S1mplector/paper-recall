@@ -37,3 +37,5 @@ The initial prototype used Qt Settings in `state.ini`. The owner's existing prog
 ## App updates
 
 The installer archives the preceding application build as `app-backup-TIMESTAMP` under the data directory. It preserves user data. To roll back the application, stop the tablet interface, restore the archived application directory under AppLoad, and start the interface again; do not replace the data directory with an application archive.
+
+Recent versions persist the last 256 mutation tokens to reject delayed duplicate actions, including after undo and restart. Older binaries do not recognize this new field; rolling back across this change requires a matching pre-update state snapshot. See the [audit](resilience-audit.md).

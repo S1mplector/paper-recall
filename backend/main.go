@@ -10,7 +10,7 @@ import (
 	"time"
 )
 
-const maxMessage = 65536
+const maxMessage = 196608 // Fits worst-case escaped card text and Linux seqpacket limits.
 
 func send(conn *net.UnixConn, kind uint32, b []byte) error {
 	h := make([]byte, 8)

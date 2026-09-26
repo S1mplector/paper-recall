@@ -132,14 +132,12 @@ func (s *Store) Close() {
 	}
 }
 func (s *Store) Save(next State) (saveErr error) {
+	if s.lock == nil {
+		return errors.New("storage is closed")
+	}
 	if s.writeFailed {
 		return errors.New("a write failed; close and reopen Paper Recall before saving again")
 	}
-	defer func() {
-		if saveErr != nil {
-			s.writeFailed = true
-		}
-	}()
 	next.Version = 1
 	next.Revision = s.State.Revision + 1
 	if e := validateState(next); e != nil {
@@ -153,12 +151,17 @@ func (s *Store) Save(next State) (saveErr error) {
 	if e != nil {
 		return e
 	}
+	defer func() {
+		if saveErr != nil {
+			s.writeFailed = true
+		}
+	}()
 	if e = atomicWrite(filepath.Join(s.Dir, "state.backup.json"), old); e != nil {
 		return fmt.Errorf("backup failed: %w", e)
 	}
 	if e = atomicWrite(filepath.Join(s.Dir, "state.json"), raw); e != nil {
 		return fmt.Errorf("save failed: %w", e)
 	}
-	s.State = next
+	s.State = cloneState(next)
 	return nil
 }

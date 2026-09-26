@@ -25,3 +25,15 @@ class ImportTests(unittest.TestCase):
         with self.assertRaises(ValueError): self.convert('Q\t\n')
 
 if __name__ == '__main__': unittest.main()
+
+class ImportRobustnessTests(unittest.TestCase):
+    def test_hash_inside_multiline_answer(self):
+        with tempfile.TemporaryDirectory() as d:
+            p=Path(d)/'input.txt';p.write_text('#html:false\nQ\t"Line one\n# a heading\nLine three"\n')
+            self.assertEqual(mod.convert(p,'Test')[0]['back'],'Line one\n# a heading\nLine three')
+    def test_invalid_name_and_oversize(self):
+        with tempfile.TemporaryDirectory() as d:
+            p=Path(d)/'input.txt';p.write_text('Q\tA\n')
+            with self.assertRaises(ValueError):mod.convert(p,' ')
+            p.write_text('Q\t'+'a'*16001+'\n')
+            with self.assertRaises(ValueError):mod.convert(p,'Test')

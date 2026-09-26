@@ -1,5 +1,7 @@
 # Paper Recall
 
+<img src="assets/logo.png" width="120" alt="Paper Recall logo: flashcards with a recall arrow">
+
 An offline flashcard app for reMarkable Paper Pro Move, launched from **sidebar → AppLoad → Paper Recall**. Built with a Qt Quick interface and a dependency-free Go backend. Verified on the owner's Move running firmware 3.28; other models and firmware versions have not been tested.
 
 - Tap to reveal; rate Again, Hard, Good, or Easy with the next interval shown.
@@ -57,7 +59,7 @@ Set `GO=/path/to/go` or `RCC=/path/to/rcc` as needed. The build produces `build/
 ## Checks
 
 ```sh
-go test ./backend
+go test -race ./backend
 go vet ./backend
 python3 -m unittest discover -s tests
 # Optional Qt integration check (requires PySide6 and a completed build):
@@ -69,3 +71,5 @@ The UI check uses an isolated temporary data directory and the real backend prot
 ## Scope
 
 This is a standalone app, with no cloud account, telemetry, network service, or Anki synchronization. Cards are plain text. Deck exports contain content and folder placement, not review progress; back up the data directory to preserve progress. Third-party launchers may need an update after a reMarkable firmware upgrade.
+
+See the [resilience audit](docs/resilience-audit.md) for regression findings, fuzz-test results, and recovery limits.

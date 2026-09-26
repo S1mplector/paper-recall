@@ -30,6 +30,7 @@ Rectangle {
     property string editId: ""
     property bool busy: true
     property string pending: ""
+    property bool connectionFailed: false
     property string folderDeck: ""
     property real nextDue: 0
     property bool selecting: false
@@ -72,10 +73,10 @@ Rectangle {
 
     Loader { id: bridge; source: app.transportSource; onLoaded: { app.busy = false; app.request("status"); } }
     Connections { target: bridge.item; function onResponse(message) { app.accept(message); } }
-    Timer { id: timeout; interval: 15000; onTriggered: { app.busy = false; app.error = "No response from storage. Close and reopen the app before trying again. A completed save will be preserved."; } }
+    Timer { id: timeout; interval: 15000; onTriggered: { app.busy = false; app.connectionFailed = true; app.error = "No response from storage. Close and reopen the app before trying again. A completed save will be preserved."; } }
     Timer { interval: 30000; running: true; repeat: true; onTriggered: if (!app.busy && (app.page === "home" || (app.page === "review" && !app.current))) app.refresh() }
     function request(action, fields) {
-        if (busy || !bridge.item) return;
+        if (busy || connectionFailed || !bridge.item) return;
         var message = fields || {};
         message.practice = practice; message.practiceIndex = message.practiceIndex === undefined ? sessionCount : message.practiceIndex;
         message.action = action; message.deck = message.deck === undefined ? selectedDeck : message.deck;
@@ -85,10 +86,12 @@ Rectangle {
     function accept(message) {
         if (message.token && message.token !== pending) return;
         timeout.stop(); busy = false;
+        if (message.token) pending = "";
         if (message.error) { error = message.error; return; }
         decks = message.decks || []; folders = message.folders || []; dueCount = message.dueCount || 0;
         reviewedToday = message.reviewedToday || 0; canUndo = !!message.canUndo;
         notice = message.notice || ""; clockWarning = !!message.clockWarning; nextDue = message.nextDue || 0;
+        if (current && message.current && current.id !== message.current.id) revealed = false;
         current = message.current || null;
         practiceTotal = message.practiceTotal || 0;
         if (message.action === "practiceNext") { sessionCount++; revealed = false; }
@@ -103,7 +106,7 @@ Rectangle {
         buildEntries();
     }
     function buildEntries() {
-        var prefix = currentFolder ? currentFolder + "/" : "", folderMap = {}, out = [];
+        var prefix = currentFolder ? currentFolder + "/" : "", folderMap = Object.create(null), out = [];
         function addFolder(path) {
             if (path.indexOf(prefix) !== 0 || path === currentFolder) return;
             var segment = path.slice(prefix.length).split("/")[0];
@@ -150,8 +153,9 @@ Rectangle {
         scale: app.unit; transformOrigin: Item.TopLeft
         Item {
             id: header; x: 32; y: 32; width: 576; height: 76
-            Text { text: "PAPER / RECALL"; font.pixelSize: 20; font.letterSpacing: 3; font.bold: true; color: "#394535"; anchors.verticalCenter: parent.verticalCenter }
-            RecallButton { x: 454; width: 122; height: 62; label: app.page === "home" ? "Close" : "Home"; onClicked: { Qt.inputMethod.hide(); if (app.page === "home") app.close(); else { app.page = "home"; app.practice = false; app.refresh(); } } }
+            Image { width: 62; height: 62; anchors.verticalCenter: parent.verticalCenter; source: "logo.png"; fillMode: Image.PreserveAspectFit }
+            Text { x: 78; text: "PAPER / RECALL"; font.pixelSize: 20; font.letterSpacing: 3; font.bold: true; color: "#394535"; anchors.verticalCenter: parent.verticalCenter }
+            RecallButton { x: 454; width: 122; height: 62; label: app.page === "home" ? "Close" : "Home"; enabled: !app.busy; onClicked: { Qt.inputMethod.hide(); if (app.page === "home") app.close(); else { app.page = "home"; app.practice = false; app.refresh(); } } }
         }
         Rectangle { x: 32; y: 122; width: 576; height: 2; color: "#202420" }
 
@@ -219,6 +223,8 @@ Rectangle {
                 x: 0; y: 67; width: parent.width; height: parent.height - 274; radius: 14; color: "white"; border.color: "#b2b6ad"
                 Text { x: 28; y: 24; text: !app.current ? "SESSION COMPLETE" : (app.practice ? "PRACTICE · " : "") + (app.revealed ? "ANSWER" : "QUESTION"); font.pixelSize: 18; font.letterSpacing: 2; color: "#555b52" }
                 Flickable {
+                    id: cardScroller
+                    Connections { target: app; function onCurrentChanged() { cardScroller.contentY = 0; } function onRevealedChanged() { cardScroller.contentY = 0; } }
                     x: 28; y: 78; width: parent.width - 56; height: parent.height - 113; clip: true; contentHeight: cardText.height
                     Text {
                         id: cardText; width: parent.width

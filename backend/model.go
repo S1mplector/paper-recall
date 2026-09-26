@@ -8,6 +8,8 @@ import (
 	"io"
 	"regexp"
 	"strings"
+	"time"
+	"unicode/utf8"
 )
 
 type Card struct {
@@ -26,14 +28,15 @@ type Undo struct {
 	ActionID string   `json:"actionId"`
 }
 type State struct {
-	Version      int             `json:"version"`
-	Revision     int64           `json:"revision"`
-	Cards        []Card          `json:"cards"`
-	Folders      []string        `json:"folders"`
-	Daily        map[string]int  `json:"daily"`
-	Imported     map[string]bool `json:"imported"`
-	Undo         *Undo           `json:"undo,omitempty"`
-	LastMutation int64           `json:"lastMutation"`
+	RecentActions []string        `json:"recentActions,omitempty"`
+	Version       int             `json:"version"`
+	Revision      int64           `json:"revision"`
+	Cards         []Card          `json:"cards"`
+	Folders       []string        `json:"folders"`
+	Daily         map[string]int  `json:"daily"`
+	Imported      map[string]bool `json:"imported"`
+	Undo          *Undo           `json:"undo,omitempty"`
+	LastMutation  int64           `json:"lastMutation"`
 }
 type DeckFile struct {
 	Format  string `json:"format"`
@@ -53,6 +56,9 @@ type DeckFile struct {
 var validID = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9._-]{0,79}$`)
 
 func decodeStrict(raw []byte, dst any) error {
+	if !utf8.Valid(raw) {
+		return errors.New("JSON must be valid UTF-8")
+	}
 	if err := checkJSONKeys(json.NewDecoder(bytes.NewReader(raw)), 0); err != nil {
 		return err
 	}
@@ -113,21 +119,49 @@ func initialState() State {
 }
 func cloneState(s State) State { b, _ := json.Marshal(s); var n State; json.Unmarshal(b, &n); return n }
 func validateState(s State) error {
-	if s.Version != 1 || s.Revision < 0 || s.Cards == nil || s.Daily == nil || s.Imported == nil {
+	if s.Version != 1 || s.Revision < 0 || s.Revision == int64(^uint64(0)>>1) || s.LastMutation < 0 || s.LastMutation > maxTimestamp || s.Cards == nil || len(s.Cards) > 20000 || s.Daily == nil || s.Imported == nil || len(s.RecentActions) > 256 {
 		return errors.New("invalid state structure")
 	}
 	ids := map[string]bool{}
+	decks := map[string]string{}
 	for _, c := range s.Cards {
-		if c.ID == "" || ids[c.ID] || c.Front == "" || c.Back == "" {
-			return errors.New("invalid or duplicate stored card")
+		if !validID.MatchString(c.DeckID) || !strings.HasPrefix(c.ID, c.DeckID+"/") || !validID.MatchString(strings.TrimPrefix(c.ID, c.DeckID+"/")) || ids[c.ID] || strings.TrimSpace(c.Front) == "" || strings.TrimSpace(c.Back) == "" || len(c.Front) > 16000 || len(c.Back) > 16000 || strings.TrimSpace(c.Deck) == "" || len(c.Deck) > 200 {
+			return errors.New("invalid stored card or deck identity")
 		}
+		folder, e := normalizeFolder(c.Folder)
+		if e != nil || folder != c.Folder {
+			return errors.New("invalid stored folder")
+		}
+		metadata := c.Deck + "\x00" + c.Folder
+		if old, ok := decks[c.DeckID]; ok && old != metadata {
+			return errors.New("inconsistent deck name or folder")
+		}
+		decks[c.DeckID] = metadata
 		ids[c.ID] = true
-		p := c.Schedule
-		if p.Due < 0 || p.Interval < 0 || p.Interval > maxInterval || p.Ease < 0 || p.Ease > 3 || p.Reviews < 0 || p.Lapses < 0 || p.LastReview < 0 {
-			return errors.New("invalid stored schedule")
+		if e := validateSchedule(c.Schedule); e != nil {
+			return e
 		}
-		if p.Phase != "" && p.Phase != "new" && p.Phase != "learning" && p.Phase != "relearning" && p.Phase != "review" {
-			return errors.New("unknown stored phase")
+	}
+	for _, f := range s.Folders {
+		n, e := normalizeFolder(f)
+		if e != nil || n == "" || n != f {
+			return errors.New("invalid folder list")
+		}
+	}
+	for d, n := range s.Daily {
+		if _, e := time.Parse("2006-01-02", d); e != nil || n < 0 || n > 1000000000 {
+			return errors.New("invalid daily review count")
+		}
+	}
+	if s.Undo != nil {
+		if !ids[s.Undo.CardID] {
+			return errors.New("undo card missing")
+		}
+		if e := validateSchedule(s.Undo.Before); e != nil {
+			return e
+		}
+		if _, e := time.Parse("2006-01-02", s.Undo.Day); e != nil {
+			return errors.New("invalid undo date")
 		}
 	}
 	return nil
@@ -168,7 +202,7 @@ func normalizeFolder(folder string) (string, error) {
 	}
 	for i, p := range parts {
 		p = strings.TrimSpace(p)
-		if p == "" || p == "." || p == ".." || len(p) > 80 || strings.ContainsAny(p, "\\\n\r\t") {
+		if p == "" || p == "." || p == ".." || len(p) > 80 || strings.ContainsAny(p, "\\\n\r\t\x00") {
 			return "", errors.New("invalid folder path")
 		}
 		parts[i] = p
@@ -200,10 +234,10 @@ func checkJSONKeys(d *json.Decoder, depth int) error {
 			if !ok {
 				return errors.New("invalid JSON key")
 			}
-			if seen[name] {
+			if seen[strings.ToLower(name)] {
 				return fmt.Errorf("duplicate JSON key %q", name)
 			}
-			seen[name] = true
+			seen[strings.ToLower(name)] = true
 			if e = checkJSONKeys(d, depth+1); e != nil {
 				return e
 			}
